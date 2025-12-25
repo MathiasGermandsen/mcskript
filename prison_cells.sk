@@ -1,0 +1,193 @@
+options:
+	prefix: &8[&6Cells&8] &7
+	guiRows: 3
+	refundPercent: 70
+
+# DATA
+# {cells::*}                       -> cell-id'er
+# {cell::<id>::price}              -> pris
+# {cell::<id>::ownerUUID}          -> uuid (tekst)
+# {cell::<id>::ownerName}          -> navn (tekst)
+# {playercell::<uuid>}             -> cell-id spilleren ejer
+# {cellgui::<uuid>::<slot>}        -> slot -> cell-id mapping for GUI
+
+function openCellsGui(p: player):
+	delete {cellgui::%uuid of {_p}%::*}
+
+	set {_inv} to chest inventory with {@guiRows} rows named "&6Prison Celler"
+	set {_slot} to 0
+
+	loop {cells::*}:
+		set {_id} to loop-value
+		set {_price} to {cell::%{_id}%::price}
+		set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
+		set {_ownerName} to {cell::%{_id}%::ownerName}
+
+		if {_ownerUUID} is set:
+			if {_ownerName} is not set:
+				set {_ownerName} to "Ukendt"
+			set {_item} to red stained glass pane named "&cCelle: &f%{_id}%"
+			set lore of {_item} to "&7Status: &cSolgt" and "&7Ejer: &f%{_ownerName}%" and "&7Pris: &f%{_price}%$" and "" and "&eKlik: &7Info" and "&eSælg: &7/cellsell"
+		else:
+			set {_item} to lime stained glass pane named "&aCelle: &f%{_id}%"
+			set lore of {_item} to "&7Status: &aLedig" and "&7Pris: &f%{_price}%$" and "" and "&eKlik: &aKøb denne celle"
+
+		set slot {_slot} of {_inv} to {_item}
+		set {cellgui::%uuid of {_p}%::%{_slot}%} to {_id}
+
+		add 1 to {_slot}
+		if {_slot} >= ({@guiRows} * 9):
+			stop
+
+	open {_inv} to {_p}
+
+
+# ------------------------------------------------------------
+# Skilt: Linje 1 skal være [Cells]
+# ------------------------------------------------------------
+on right click:
+	if clicked block is set:
+		set {_t} to "%type of clicked block%"
+		if {_t} contains "SIGN":
+			if line 1 of clicked block is "[Cells]":
+				cancel event
+				openCellsGui(player)
+
+
+# ------------------------------------------------------------
+# GUI click (ingen inventory-navn check — kun mapping)
+# ------------------------------------------------------------
+on inventory click:
+	set {_slot} to clicked slot
+	set {_id} to {cellgui::%uuid of player%::%{_slot}%}
+	if {_id} is not set:
+		stop
+
+	cancel event
+
+	set {_price} to {cell::%{_id}%::price}
+	set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
+	set {_myUUID} to "%uuid of player%"
+
+	# Hvis solgt
+	if {_ownerUUID} is set:
+		if "%{_ownerUUID}%" is {_myUUID}:
+			send "{@prefix}&aDet her er din celle: &f%{_id}%&a. &7(Sælg med /cellsell)" to player
+		else:
+			send "{@prefix}&cDen celle er allerede solgt." to player
+		stop
+
+	# Køb
+	if {playercell::%{_myUUID}%} is set:
+		send "{@prefix}&cDu har allerede en celle: &f%{playercell::%{_myUUID}%}%&c." to player
+		stop
+
+	if balance of player < {_price}:
+		send "{@prefix}&cDu har ikke nok penge. Pris: &f%{_price}%$&c." to player
+		stop
+
+	remove {_price} from balance of player
+	set {cell::%{_id}%::ownerUUID} to "%uuid of player%"
+	set {cell::%{_id}%::ownerName} to "%name of player%"
+	set {playercell::%{_myUUID}%} to {_id}
+
+	send "{@prefix}&aDu købte cellen &f%{_id}%&a for &f%{_price}%$&a." to player
+	close player's inventory
+
+
+on inventory close:
+	delete {cellgui::%uuid of player%::*}
+
+
+# ------------------------------------------------------------
+# Player commands
+# ------------------------------------------------------------
+command /cell:
+	trigger:
+		set {_myUUID} to "%uuid of player%"
+		if {playercell::%{_myUUID}%} is set:
+			send "{@prefix}&7Din celle: &f%{playercell::%{_myUUID}%}%" to player
+		else:
+			send "{@prefix}&7Du ejer ingen celle." to player
+
+command /cellsell:
+	trigger:
+		set {_myUUID} to "%uuid of player%"
+		if {playercell::%{_myUUID}%} is not set:
+			send "{@prefix}&cDu ejer ingen celle." to player
+			stop
+
+		set {_id} to {playercell::%{_myUUID}%}
+		set {_price} to {cell::%{_id}%::price}
+		set {_refund} to floor({_price} * {@refundPercent} / 100)
+
+		add {_refund} to balance of player
+
+		delete {cell::%{_id}%::ownerUUID}
+		delete {cell::%{_id}%::ownerName}
+		delete {playercell::%{_myUUID}%}
+
+		send "{@prefix}&aDu solgte &f%{_id}%&a tilbage for &f%{_refund}%$&a."
+
+
+# ------------------------------------------------------------
+# Admin commands
+# ------------------------------------------------------------
+command /celladmin <text> [<text>] [<text>]:
+	permission: cells.admin
+	permission message: {@prefix}&cDu har ikke permission.
+	trigger:
+		set {_sub} to argument 1
+
+		if {_sub} is "add":
+			set {_id} to argument 2
+			set {_priceText} to argument 3
+
+			# FIX 1: split "or"-checket i to if's
+			if {_id} is not set:
+				send "{@prefix}&cBrug: /celladmin add <id> <pris>" to player
+				stop
+			if {_priceText} is not set:
+				send "{@prefix}&cBrug: /celladmin add <id> <pris>" to player
+				stop
+
+			set {_price} to {_priceText} parsed as number
+			if {_price} <= 0:
+				send "{@prefix}&cPris skal være et tal over 0." to player
+				stop
+
+			if {cell::%{_id}%::price} is set:
+				send "{@prefix}&cCelle-id findes allerede." to player
+				stop
+
+			add {_id} to {cells::*}
+			set {cell::%{_id}%::price} to {_price}
+
+			send "{@prefix}&aOprettet celle &f%{_id}%&a med pris &f%{_price}%$&a."
+			stop
+
+		if {_sub} is "remove":
+			set {_id} to argument 2
+			if {_id} is not set:
+				send "{@prefix}&cBrug: /celladmin remove <id>" to player
+				stop
+
+			if {cell::%{_id}%::price} is not set:
+				send "{@prefix}&cUkendt celle-id." to player
+				stop
+
+			if {cell::%{_id}%::ownerUUID} is set:
+				set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
+				delete {playercell::%{_ownerUUID}%}
+
+			remove {_id} from {cells::*}
+			delete {cell::%{_id}%::*}
+
+			send "{@prefix}&aFjernede cellen &f%{_id}%&a."
+			stop
+
+		if {_sub} is "list":
+			send "{@prefix}&7Celler: &f%{cells::*}%"
+			stop
+
+		send "{@prefix}&cBrug: /celladmin add|remove|list"

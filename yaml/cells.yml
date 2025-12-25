@@ -1,0 +1,87 @@
+
+Når en spiller højreklikker skiltet, åbner GUI’en.
+
+---
+
+## Kommandoer (Spiller)
+
+### Se din celle
+- `/cell`
+
+### Sælg din celle tilbage
+- `/cellsell`
+
+Refund % styres i scriptets options:
+- `refundPercent` (standard: 70%)
+
+---
+
+## Hvordan ejerskab virker
+
+- En celle er **ledig** hvis den ikke har en owner.
+- Når en spiller køber en celle:
+  - Der trækkes penge via Vault
+  - Spillerens UUID + navn gemmes som ejer
+  - Spilleren kan kun eje **1 celle** ad gangen
+
+---
+
+## Data (variabler)
+
+Scriptet bruger disse variable keys:
+
+- `{cells::*}`  
+  Liste over alle celler (IDs)
+
+- `{cell::<id>::price}`  
+  Pris på cellen
+
+- `{cell::<id>::ownerUUID}`  
+  Ejerens UUID (tekst)
+
+- `{cell::<id>::ownerName}`  
+  Ejerens navn (tekst)
+
+- `{playercell::<uuid>}`  
+  Hvilken celle spilleren ejer
+
+- `{cellgui::<uuid>::<slot>}`  
+  Midlertidig mapping til GUI-klik (ryddes ved inventory close)
+
+---
+
+## Fejlfinding
+
+### “Vault economy not found” / kan ikke trække penge
+- Tjek at Vault er installeret
+- Tjek at du har et economy-plugin (EssentialsX Economy osv.)
+- Tjek at economy virker for spillere (`/balance`)
+
+### GUI åbner ikke fra skilt
+- Tjek at linje 1 er **præcis**: `[Cells]`
+- Tjek at Skript-scriptet er reloaded uden errors
+
+---
+
+## Kendte begrænsninger (bevidst)
+
+- Ingen teleport
+- Ingen automatisk “beskyttelse” af celler (bygge/døre/kister)
+- Ingen pagination hvis du har mange celler (GUI viser kun første side)
+
+---
+
+## Forslag til næste opgraderinger
+
+- WorldGuard integration:
+  - add/remove spiller som member i cellens region ved køb/salg
+- Flere celler per spiller (rank-baseret)
+- Paging i GUI (Next/Prev)
+- Bekræftelsesmenu ved køb
+- “Leje” celler (tidsbegrænset) i stedet for køb
+
+---
+
+## License
+
+Brug frit på din server. 🙂

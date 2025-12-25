@@ -1,0 +1,42 @@
+menu:
+  title: "Rankup"
+  rows: 3
+  filler:
+    material: "GRAY_STAINED_GLASS_PANE"
+    name: " "
+
+rankup:
+  # Pris for at få WOOD hvis man ikke har nogen af ladder ranks (fx owner/default)
+  none_to_wood_cost: 0
+
+  ladder:
+    wood:
+      next: "coal"
+      cost: 10000
+    coal:
+      next: "iron"
+      cost: 25000
+    iron:
+      next: "gold"
+      cost: 75000
+    gold:
+      next: "diamond"
+      cost: 200000
+    diamond:
+      next: "emerald"
+      cost: 500000
+    emerald:
+      next: ""
+      cost: 0
+
+luckperms:
+  # Scriptet finder rank via permissions: group.wood, group.coal, osv.
+  use_group_permissions: true
+
+  # Behold owner/staff osv. ved rankup:
+  # - parent add næste rank
+  # - parent remove kun den gamle ladder rank
+  keep_staff_ranks: true
+
+  # Sæt primary group til den nye ladder-rank (så den vises i chat/tab)
+  set_primary_group: true

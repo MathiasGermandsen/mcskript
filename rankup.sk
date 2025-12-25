@@ -1,0 +1,134 @@
+options:
+  menuName: Rankup
+  menuRows: 3
+
+  costNoneToWood: 0
+  costWoodToCoal: 10000
+  costCoalToIron: 25000
+  costIronToGold: 75000
+  costGoldToDiamond: 200000
+  costDiamondToEmerald: 500000
+
+# Unikt funktionsnavn så den ikke konflikter med andre scripts
+function rankup_getRank(p: player) :: text:
+  if {_p} has permission "group.emerald":
+    return "emerald"
+  if {_p} has permission "group.diamond":
+    return "diamond"
+  if {_p} has permission "group.gold":
+    return "gold"
+  if {_p} has permission "group.iron":
+    return "iron"
+  if {_p} has permission "group.coal":
+    return "coal"
+  if {_p} has permission "group.wood":
+    return "wood"
+  return "none"
+
+command /rankup:
+  trigger:
+    open chest with {@menuRows} rows named "{@menuName}" to player
+    wait 1 tick
+    set {_inv} to player's current inventory
+    set {_menuSize} to {@menuRows} * 9
+
+    # Fyld KUN menuen (øverste chest), ikke spillerens inventory
+    loop {_menuSize} times:
+      set slot (loop-number - 1) of {_inv} to gray stained glass pane named " "
+
+    set {_rank} to rankup_getRank(player)
+
+    if {_rank} is "none":
+      set {_next} to "wood"
+      set {_cost} to {@costNoneToWood}
+    else if {_rank} is "wood":
+      set {_next} to "coal"
+      set {_cost} to {@costWoodToCoal}
+    else if {_rank} is "coal":
+      set {_next} to "iron"
+      set {_cost} to {@costCoalToIron}
+    else if {_rank} is "iron":
+      set {_next} to "gold"
+      set {_cost} to {@costIronToGold}
+    else if {_rank} is "gold":
+      set {_next} to "diamond"
+      set {_cost} to {@costGoldToDiamond}
+    else if {_rank} is "diamond":
+      set {_next} to "emerald"
+      set {_cost} to {@costDiamondToEmerald}
+    else if {_rank} is "emerald":
+      set slot 13 of {_inv} to emerald block named "&aMax rank: &2emerald"
+      set {_lore::*} to "&7Du er allerede max rank!"
+      set lore of slot 13 of {_inv} to {_lore::*}
+      stop
+
+    set slot 13 of {_inv} to emerald named "&aRank up til &e%{_next}%"
+
+    clear {_lore::*}
+    add "&7Din rank: &f%{_rank}%" to {_lore::*}
+    add "&7Pris: &e$%{_cost}%" to {_lore::*}
+    add "&7Balance: &a$%balance of player%" to {_lore::*}
+    add "" to {_lore::*}
+    add "&aKlik for at rank up!" to {_lore::*}
+    set lore of slot 13 of {_inv} to {_lore::*}
+
+on inventory click:
+  if name of event-inventory is "{@menuName}":
+    # Kun blokér klik i SELVE GUI (øverste inventory)
+    if clicked inventory is event-inventory:
+      cancel event
+
+      if clicked slot is 13:
+        set {_rank} to rankup_getRank(player)
+
+        if {_rank} is "emerald":
+          send "&aDu er allerede max rank!" to player
+          close player's inventory
+          stop
+
+        if {_rank} is "none":
+          set {_next} to "wood"
+          set {_cost} to {@costNoneToWood}
+        else if {_rank} is "wood":
+          set {_next} to "coal"
+          set {_cost} to {@costWoodToCoal}
+        else if {_rank} is "coal":
+          set {_next} to "iron"
+          set {_cost} to {@costCoalToIron}
+        else if {_rank} is "iron":
+          set {_next} to "gold"
+          set {_cost} to {@costIronToGold}
+        else if {_rank} is "gold":
+          set {_next} to "diamond"
+          set {_cost} to {@costGoldToDiamond}
+        else if {_rank} is "diamond":
+          set {_next} to "emerald"
+          set {_cost} to {@costDiamondToEmerald}
+        else:
+          send "&cDin rank kunne ikke læses." to player
+          close player's inventory
+          stop
+
+        if balance of player < {_cost}:
+          send "&cDu har ikke nok penge! &7Du mangler &e$%{_cost}%&7." to player
+          close player's inventory
+          stop
+
+        # skVault-style
+        if {_cost} > 0:
+          remove {_cost} from balance of player
+
+        # Staff-safe: behold owner osv.
+        execute console command "lp user %player% parent add %{_next}%"
+        if {_rank} is not "none":
+          execute console command "lp user %player% parent remove %{_rank}%"
+
+        # Vis rank i chat/tab (valgfri men anbefalet)
+        execute console command "lp user %player% primarygroup set %{_next}%"
+
+        send "&aRankup! &7Du er nu &e%{_next}%&7. &8(-$%{_cost}%)" to player
+        close player's inventory
+
+on inventory drag:
+  if name of event-inventory is "{@menuName}":
+    cancel event
