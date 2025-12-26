@@ -1,138 +1,425 @@
-options:
+ options:
+	menuName: PrisonCeller
+	panelName: CellePanel
+	menuRows: 3
+	maxDays: 21
+	minutesPerDay: 1440
 	prefix: &8[&6Cells&8] &7
-	guiRows: 3
-	refundPercent: 70
 
 # DATA
-# {cells::*}                       -> cell-id'er
-# {cell::<id>::price}              -> pris
-# {cell::<id>::ownerUUID}          -> uuid (tekst)
-# {cell::<id>::ownerName}          -> navn (tekst)
-# {playercell::<uuid>}             -> cell-id spilleren ejer
-# {cellgui::<uuid>::<slot>}        -> slot -> cell-id mapping for GUI
+# {cells::*}                         -> cell-id'er
+# {cell::<id>::price}                -> pris pr. 24 timer
+# {cell::<id>::ownerUUID}            -> uuid (tekst)
+# {cell::<id>::ownerName}            -> navn (tekst)
+# {cell::<id>::minutesLeft}          -> minutter tilbage på leje (tal)
+# {cell::<id>::sign}                 -> location til cellens skilt (valgfrit)
+# {cell::<id>::region}               -> worldguard region (valgfrit, default cell_<id>)
+# {playercell::<uuid>}               -> hvilken celle spilleren lejer (1 pr spiller)
+# {cellpanel::%uuid%}                -> hvilken celle spilleren har åbnet panel for
 
-function openCellsGui(p: player):
-	delete {cellgui::%uuid of {_p}%::*}
+function cell_region(id: text) :: text:
+	if {cell::%{_id}%::region} is set:
+		return {cell::%{_id}%::region}
+	return "cell_%{_id}%"
 
-	set {_inv} to chest inventory with {@guiRows} rows named "&6Prison Celler"
-	set {_slot} to 0
+function cell_updateSign(id: text):
+	set {_id} to {_id}
+	if {cell::%{_id}%::sign} is not set:
+		stop
 
+	set {_loc} to {cell::%{_id}%::sign}
+	set {_b} to block at {_loc}
+	set {_t} to "%type of {_b}%"
+	if {_t} does not contain "SIGN":
+		stop
+
+	set {_price} to {cell::%{_id}%::price}
+	set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
+	set {_ownerName} to {cell::%{_id}%::ownerName}
+	set {_mins} to {cell::%{_id}%::minutesLeft}
+
+	if {_ownerUUID} is set:
+		if {_ownerName} is not set:
+			set {_ownerName} to "Ukendt"
+
+		# ? NU står der [Cells] på cellens skilt (rød når udlejet)
+		set line 1 of {_b} to "&c[Cells]"
+		set line 2 of {_b} to "&f%{_id}%"
+		set line 3 of {_b} to "&c%{_ownerName}%"
+
+		if {_mins} is set:
+			set {_d} to floor({_mins} / {@minutesPerDay})
+			set {_h} to floor((({_mins} - ({_d} * {@minutesPerDay})) / 60))
+			set line 4 of {_b} to "&7Tid: %{_d}%d %{_h}%h"
+		else:
+			set line 4 of {_b} to "&7Udlejet"
+	else:
+		# ? [Cells] grøn når ledig
+		set line 1 of {_b} to "&a[Cells]"
+		set line 2 of {_b} to "&f%{_id}%"
+		set line 3 of {_b} to "&aLedig"
+		set line 4 of {_b} to "&7%{_price}%$/24t"
+
+
+function cell_openMenu(p: player):
+	open chest with {@menuRows} rows named "{@menuName}" to {_p}
+	wait 1 tick
+
+	set {_inv} to {_p}'s current inventory
+	set {_menuSize} to {@menuRows} * 9
+
+	loop {_menuSize} times:
+		set slot (loop-number - 1) of {_inv} to gray stained glass pane named " "
+
+	# slots i midten (som dit rankup)
+	delete {_slots::*}
+	add 13 to {_slots::*}
+	add 12 to {_slots::*}
+	add 14 to {_slots::*}
+	add 11 to {_slots::*}
+	add 15 to {_slots::*}
+	add 10 to {_slots::*}
+	add 16 to {_slots::*}
+	add 4 to {_slots::*}
+	add 22 to {_slots::*}
+	add 3 to {_slots::*}
+	add 5 to {_slots::*}
+	add 21 to {_slots::*}
+	add 23 to {_slots::*}
+	add 2 to {_slots::*}
+	add 6 to {_slots::*}
+	add 20 to {_slots::*}
+	add 24 to {_slots::*}
+
+	set {_i} to 1
 	loop {cells::*}:
 		set {_id} to loop-value
+		set {_slot} to {_slots::%{_i}%}
+		if {_slot} is not set:
+			stop
+
 		set {_price} to {cell::%{_id}%::price}
 		set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
 		set {_ownerName} to {cell::%{_id}%::ownerName}
+		set {_mins} to {cell::%{_id}%::minutesLeft}
+
+		delete {_lore::*}
 
 		if {_ownerUUID} is set:
 			if {_ownerName} is not set:
 				set {_ownerName} to "Ukendt"
-			set {_item} to red stained glass pane named "&cCelle: &f%{_id}%"
-			set lore of {_item} to "&7Status: &cSolgt" and "&7Ejer: &f%{_ownerName}%" and "&7Pris: &f%{_price}%$" and "" and "&eKlik: &7Info" and "&eS�lg: &7/cellsell"
+
+			set slot {_slot} of {_inv} to red stained glass pane named "&cCelle: &f%{_id}%"
+			add "&7Status: &cUdlejet" to {_lore::*}
+			add "&7Ejer: &f%{_ownerName}%" to {_lore::*}
+			add "&7Pris: &f%{_price}%$ pr. 24t" to {_lore::*}
+			if {_mins} is set:
+				set {_d} to floor({_mins} / {@minutesPerDay})
+				set {_h} to floor((({_mins} - ({_d} * {@minutesPerDay})) / 60))
+				add "&7Tid tilbage: &f%{_d}%d %{_h}%h" to {_lore::*}
+			add "" to {_lore::*}
+			add "&eKlik: &7Åbn panel (opsig / tilføj dage)" to {_lore::*}
+			set lore of slot {_slot} of {_inv} to {_lore::*}
 		else:
-			set {_item} to lime stained glass pane named "&aCelle: &f%{_id}%"
-			set lore of {_item} to "&7Status: &aLedig" and "&7Pris: &f%{_price}%$" and "" and "&eKlik: &aK�b denne celle"
+			set slot {_slot} of {_inv} to lime stained glass pane named "&aCelle: &f%{_id}%"
+			add "&7Status: &aLedig" to {_lore::*}
+			add "&7Pris: &f%{_price}%$ pr. 24t" to {_lore::*}
+			add "&7Max: &f{@maxDays}&7 dage" to {_lore::*}
+			add "" to {_lore::*}
+			add "&aKlik for at leje 24 timer" to {_lore::*}
+			set lore of slot {_slot} of {_inv} to {_lore::*}
 
-		set slot {_slot} of {_inv} to {_item}
-		set {cellgui::%uuid of {_p}%::%{_slot}%} to {_id}
+		add 1 to {_i}
 
-		add 1 to {_slot}
-		if {_slot} >= ({@guiRows} * 9):
-			stop
 
-	open {_inv} to {_p}
+function cell_openPanel(p: player, id: text):
+	set {cellpanel::%uuid of {_p}%} to {_id}
+
+	open chest with 3 rows named "{@panelName}" to {_p}
+	wait 1 tick
+
+	set {_inv} to {_p}'s current inventory
+	loop 27 times:
+		set slot (loop-number - 1) of {_inv} to gray stained glass pane named " "
+
+	# bygg panelet første gang
+	cell_refreshPanel({_p}, {_id})
+
+# ? NY: opdater panelet uden at genåbne (så du kan spam-klikke)
+function cell_refreshPanel(p: player, id: text):
+	set {_inv} to {_p}'s current inventory
+
+	set {_price} to {cell::%{_id}%::price}
+	set {_mins} to {cell::%{_id}%::minutesLeft}
+	set {_ownerName} to {cell::%{_id}%::ownerName}
+	if {_ownerName} is not set:
+		set {_ownerName} to "Ukendt"
+
+	# INFO (slot 13)
+	set slot 13 of {_inv} to paper named "&eCelle: &f%{_id}%"
+	delete {_info::*}
+	add "&7Ejer: &f%{_ownerName}%" to {_info::*}
+	add "&7Pris pr. dag: &f%{_price}%$" to {_info::*}
+	if {_mins} is set:
+		set {_d} to floor({_mins} / {@minutesPerDay})
+		set {_h} to floor((({_mins} - ({_d} * {@minutesPerDay})) / 60))
+		add "&7Tid tilbage: &f%{_d}%d %{_h}%h" to {_info::*}
+	add "&7Max: &f{@maxDays}&7 dage" to {_info::*}
+	set lore of slot 13 of {_inv} to {_info::*}
+
+	# RØD = opsig (slot 11)
+	set slot 11 of {_inv} to red stained glass pane named "&cOpsig leje"
+	delete {_rd::*}
+	add "&7Gør cellen ledig igen" to {_rd::*}
+	set lore of slot 11 of {_inv} to {_rd::*}
+
+	# GUL = +1 dag (slot 15)
+	set slot 15 of {_inv} to yellow stained glass pane named "&eTilføj +1 dag"
+	delete {_yl::*}
+	add "&7Forlænger leje med 24 timer" to {_yl::*}
+	add "&7Pris: &f%{_price}%$" to {_yl::*}
+
+	set {_cap} to {@maxDays} * {@minutesPerDay}
+	if {_mins} is set:
+		if {_mins} >= {_cap}:
+			add "&cMAX nået" to {_yl::*}
+
+	set lore of slot 15 of {_inv} to {_yl::*}
 
 
 # ------------------------------------------------------------
-# Skilt: Linje 1 skal v�re [Cells]
+# Skilt der åbner MENU (Linje 1 = [Cells] - FARVER TILLADT)
 # ------------------------------------------------------------
 on right click:
 	if clicked block is set:
 		set {_t} to "%type of clicked block%"
 		if {_t} contains "SIGN":
-			if line 1 of clicked block is "[Cells]":
+			set {_l1} to line 1 of clicked block
+
+			replace all "&a" with "" in {_l1}
+			replace all "&b" with "" in {_l1}
+			replace all "&c" with "" in {_l1}
+			replace all "&d" with "" in {_l1}
+			replace all "&e" with "" in {_l1}
+			replace all "&f" with "" in {_l1}
+			replace all "&0" with "" in {_l1}
+			replace all "&1" with "" in {_l1}
+			replace all "&2" with "" in {_l1}
+			replace all "&3" with "" in {_l1}
+			replace all "&4" with "" in {_l1}
+			replace all "&5" with "" in {_l1}
+			replace all "&6" with "" in {_l1}
+			replace all "&7" with "" in {_l1}
+			replace all "&8" with "" in {_l1}
+			replace all "&9" with "" in {_l1}
+			replace all "&r" with "" in {_l1}
+
+			if {_l1} is "[Cells]":
 				cancel event
-				openCellsGui(player)
+				cell_openMenu(player)
 
 
 # ------------------------------------------------------------
-# GUI click (ingen inventory-navn check � kun mapping)
+# Klik i MENU (finder id via item-navn)
 # ------------------------------------------------------------
 on inventory click:
-	set {_slot} to clicked slot
-	set {_id} to {cellgui::%uuid of player%::%{_slot}%}
-	if {_id} is not set:
-		stop
+	if name of event-inventory is "{@menuName}":
+		if clicked inventory is event-inventory:
+			cancel event
 
-	cancel event
+			if event-item is not set:
+				stop
 
-	set {_price} to {cell::%{_id}%::price}
-	set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
-	set {_myUUID} to "%uuid of player%"
+			set {_raw} to name of event-item
 
-	# Hvis solgt
-	if {_ownerUUID} is set:
-		if "%{_ownerUUID}%" is {_myUUID}:
-			send "{@prefix}&aDet her er din celle: &f%{_id}%&a. &7(S�lg med /cellsell)" to player
-		else:
-			send "{@prefix}&cDen celle er allerede solgt." to player
-		stop
+			replace all "&a" with "" in {_raw}
+			replace all "&c" with "" in {_raw}
+			replace all "&f" with "" in {_raw}
+			replace all "&7" with "" in {_raw}
+			replace all "&e" with "" in {_raw}
+			replace all "&2" with "" in {_raw}
+			replace all "&6" with "" in {_raw}
+			replace all "&8" with "" in {_raw}
+			replace all "&r" with "" in {_raw}
 
-	# K�b
-	if {playercell::%{_myUUID}%} is set:
-		send "{@prefix}&cDu har allerede en celle: &f%{playercell::%{_myUUID}%}%&c." to player
-		stop
+			if {_raw} does not contain "Celle:":
+				stop
 
-	if balance of player < {_price}:
-		send "{@prefix}&cDu har ikke nok penge. Pris: &f%{_price}%$&c." to player
-		stop
+			replace all "Celle:" with "" in {_raw}
+			replace all " " with "" in {_raw}
+			set {_id} to {_raw}
 
-	remove {_price} from balance of player
-	set {cell::%{_id}%::ownerUUID} to "%uuid of player%"
-	set {cell::%{_id}%::ownerName} to "%name of player%"
-	set {playercell::%{_myUUID}%} to {_id}
+			if {cell::%{_id}%::price} is not set:
+				send "{@prefix}&cKunne ikke finde cellen (%{_id}%)." to player
+				stop
 
-	send "{@prefix}&aDu k�bte cellen &f%{_id}%&a for &f%{_price}%$&a." to player
-	close player's inventory
+			set {_price} to {cell::%{_id}%::price}
+			set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
+			set {_myUUID} to "%uuid of player%"
+
+			if {_ownerUUID} is set:
+				if "%{_ownerUUID}%" is not {_myUUID}:
+					send "{@prefix}&cDen celle er allerede udlejet." to player
+					close player's inventory
+					stop
+
+			if {playercell::%{_myUUID}%} is set:
+				if {playercell::%{_myUUID}%} is not {_id}:
+					send "{@prefix}&cDu lejer allerede en anden celle: &f%{playercell::%{_myUUID}%}%&c." to player
+					close player's inventory
+					stop
+
+			if {_ownerUUID} is set:
+				cell_openPanel(player, {_id})
+				stop
+
+			if balance of player < {_price}:
+				send "{@prefix}&cDu har ikke nok penge. &7Pris: &f%{_price}%$ &7Du har: &f%balance of player%$" to player
+				close player's inventory
+				stop
+
+			if {_price} > 0:
+				remove {_price} from balance of player
+
+			set {cell::%{_id}%::ownerUUID} to "%uuid of player%"
+			set {cell::%{_id}%::ownerName} to name of player
+			set {cell::%{_id}%::minutesLeft} to {@minutesPerDay}
+			set {playercell::%{_myUUID}%} to {_id}
+
+			set {_region} to cell_region({_id})
+			execute console command "rg addmember %{_region}% %player%"
+
+			cell_updateSign({_id})
+
+			send "{@prefix}&aDu lejede cellen &f%{_id}%&a i &f24t&a. &8(-%{_price}%$)" to player
+			close player's inventory
+
+
+# ------------------------------------------------------------
+# Panel klik (OPDATERER UDEN AT LUKKE)
+# - 15 (GUL): +1 dag
+# - 11 (RØD): opsig
+# ------------------------------------------------------------
+on inventory click:
+	if name of event-inventory is "{@panelName}":
+		if clicked inventory is event-inventory:
+			cancel event
+
+			set {_id} to {cellpanel::%uuid of player%}
+			if {_id} is not set:
+				close player's inventory
+				stop
+
+			set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
+			set {_myUUID} to "%uuid of player%"
+			if {_ownerUUID} is not set:
+				close player's inventory
+				stop
+			if "%{_ownerUUID}%" is not {_myUUID}:
+				close player's inventory
+				stop
+
+			# GUL: +1 dag
+			if clicked slot is 15:
+				set {_price} to {cell::%{_id}%::price}
+				set {_mins} to {cell::%{_id}%::minutesLeft}
+				if {_mins} is not set:
+					set {_mins} to 0
+
+				set {_cap} to {@maxDays} * {@minutesPerDay}
+				if {_mins} >= {_cap}:
+					send "{@prefix}&cDu kan ikke leje mere end {@maxDays} dage." to player
+					cell_refreshPanel(player, {_id})
+					stop
+
+				if balance of player < {_price}:
+					send "{@prefix}&cDu har ikke nok penge. &7Pris: &f%{_price}%$ &7Du har: &f%balance of player%$" to player
+					cell_refreshPanel(player, {_id})
+					stop
+
+				if {_price} > 0:
+					remove {_price} from balance of player
+
+				add {@minutesPerDay} to {_mins}
+				if {_mins} > {_cap}:
+					set {_mins} to {_cap}
+
+				set {cell::%{_id}%::minutesLeft} to {_mins}
+				cell_updateSign({_id})
+				cell_refreshPanel(player, {_id})
+				send "{@prefix}&aTilføjede +24t til &f%{_id}%&a. &8(-%{_price}%$)" to player
+				stop
+
+			# RØD: opsig
+			if clicked slot is 11:
+				set {_region} to cell_region({_id})
+				execute console command "rg removemember %{_region}% %player%"
+
+				delete {cell::%{_id}%::ownerUUID}
+				delete {cell::%{_id}%::ownerName}
+				delete {cell::%{_id}%::minutesLeft}
+
+				delete {playercell::%{_myUUID}%}
+				delete {cellpanel::%uuid of player%}
+
+				cell_updateSign({_id})
+
+				send "{@prefix}&aDu opsagde lejen af &f%{_id}%&a." to player
+				close player's inventory
+				stop
+
+
+on inventory drag:
+	if name of event-inventory is "{@menuName}":
+		cancel event
+	if name of event-inventory is "{@panelName}":
+		cancel event
 
 
 on inventory close:
-	delete {cellgui::%uuid of player%::*}
+	if name of event-inventory is "{@panelName}":
+		delete {cellpanel::%uuid of player%}
 
 
-# ------------------------------------------------------------
-# Player commands
-# ------------------------------------------------------------
+every 1 minute:
+	loop {cells::*}:
+		set {_id} to loop-value
+		if {cell::%{_id}%::minutesLeft} is set:
+			remove 1 from {cell::%{_id}%::minutesLeft}
+			if {cell::%{_id}%::minutesLeft} <= 0:
+				set {_ownerUUID} to {cell::%{_id}%::ownerUUID}
+				set {_pn} to {cell::%{_id}%::ownerName}
+
+				set {_region} to cell_region({_id})
+				if {_pn} is set:
+					execute console command "rg removemember %{_region}% %{_pn}%"
+
+				if {_ownerUUID} is set:
+					delete {playercell::%{_ownerUUID}%}
+
+				delete {cell::%{_id}%::ownerUUID}
+				delete {cell::%{_id}%::ownerName}
+				delete {cell::%{_id}%::minutesLeft}
+
+				cell_updateSign({_id})
+
+
 command /cell:
 	trigger:
 		set {_myUUID} to "%uuid of player%"
 		if {playercell::%{_myUUID}%} is set:
-			send "{@prefix}&7Din celle: &f%{playercell::%{_myUUID}%}%" to player
+			set {_id} to {playercell::%{_myUUID}%}
+			set {_mins} to {cell::%{_id}%::minutesLeft}
+			if {_mins} is set:
+				set {_d} to floor({_mins} / {@minutesPerDay})
+				set {_h} to floor((({_mins} - ({_d} * {@minutesPerDay})) / 60))
+				send "{@prefix}&7Din celle: &f%{_id}% &7(Tid: &f%{_d}%d %{_h}%h&7)" to player
+			else:
+				send "{@prefix}&7Din celle: &f%{_id}%" to player
 		else:
-			send "{@prefix}&7Du ejer ingen celle." to player
-
-command /cellsell:
-	trigger:
-		set {_myUUID} to "%uuid of player%"
-		if {playercell::%{_myUUID}%} is not set:
-			send "{@prefix}&cDu ejer ingen celle." to player
-			stop
-
-		set {_id} to {playercell::%{_myUUID}%}
-		set {_price} to {cell::%{_id}%::price}
-		set {_refund} to floor({_price} * {@refundPercent} / 100)
-
-		add {_refund} to balance of player
-
-		delete {cell::%{_id}%::ownerUUID}
-		delete {cell::%{_id}%::ownerName}
-		delete {playercell::%{_myUUID}%}
-
-		send "{@prefix}&aDu solgte &f%{_id}%&a tilbage for &f%{_refund}%$&a."
+			send "{@prefix}&7Du lejer ingen celle." to player
 
 
-# ------------------------------------------------------------
-# Admin commands
-# ------------------------------------------------------------
 command /celladmin <text> [<text>] [<text>]:
 	permission: cells.admin
 	permission message: {@prefix}&cDu har ikke permission.
@@ -143,17 +430,16 @@ command /celladmin <text> [<text>] [<text>]:
 			set {_id} to argument 2
 			set {_priceText} to argument 3
 
-			# FIX 1: split "or"-checket i to if's
 			if {_id} is not set:
-				send "{@prefix}&cBrug: /celladmin add <id> <pris>" to player
+				send "{@prefix}&cBrug: /celladmin add <id> <pris pr. 24t>" to player
 				stop
 			if {_priceText} is not set:
-				send "{@prefix}&cBrug: /celladmin add <id> <pris>" to player
+				send "{@prefix}&cBrug: /celladmin add <id> <pris pr. 24t>" to player
 				stop
 
 			set {_price} to {_priceText} parsed as number
 			if {_price} <= 0:
-				send "{@prefix}&cPris skal v�re et tal over 0." to player
+				send "{@prefix}&cPris skal være et tal over 0." to player
 				stop
 
 			if {cell::%{_id}%::price} is set:
@@ -163,7 +449,12 @@ command /celladmin <text> [<text>] [<text>]:
 			add {_id} to {cells::*}
 			set {cell::%{_id}%::price} to {_price}
 
-			send "{@prefix}&aOprettet celle &f%{_id}%&a med pris &f%{_price}%$&a."
+			cell_updateSign({_id})
+			send "{@prefix}&aOprettet celle &f%{_id}%&a med pris &f%{_price}%$&a pr. 24t." to player
+			stop
+
+		if {_sub} is "list":
+			send "{@prefix}&7Celler: &f%{cells::*}%" to player
 			stop
 
 		if {_sub} is "remove":
@@ -183,11 +474,47 @@ command /celladmin <text> [<text>] [<text>]:
 			remove {_id} from {cells::*}
 			delete {cell::%{_id}%::*}
 
-			send "{@prefix}&aFjernede cellen &f%{_id}%&a."
+			send "{@prefix}&aFjernede cellen &f%{_id}%&a." to player
 			stop
 
-		if {_sub} is "list":
-			send "{@prefix}&7Celler: &f%{cells::*}%"
+		if {_sub} is "setsign":
+			set {_id} to argument 2
+			if {_id} is not set:
+				send "{@prefix}&cBrug: /celladmin setsign <id> &7(kig på et skilt)" to player
+				stop
+
+			if {cell::%{_id}%::price} is not set:
+				send "{@prefix}&cUkendt celle-id." to player
+				stop
+
+			set {_b} to target block of player
+			set {_t} to "%type of {_b}%"
+			if {_t} does not contain "SIGN":
+				send "{@prefix}&cDu skal kigge på et skilt." to player
+				stop
+
+			set {cell::%{_id}%::sign} to location of {_b}
+			cell_updateSign({_id})
+			send "{@prefix}&aSkilt sat for celle &f%{_id}%&a." to player
 			stop
 
-		send "{@prefix}&cBrug: /celladmin add|remove|list"
+		if {_sub} is "setregion":
+			set {_id} to argument 2
+			set {_region} to argument 3
+
+			if {_id} is not set:
+				send "{@prefix}&cBrug: /celladmin setregion <id> <regionnavn>" to player
+				stop
+			if {_region} is not set:
+				send "{@prefix}&cBrug: /celladmin setregion <id> <regionnavn>" to player
+				stop
+
+			if {cell::%{_id}%::price} is not set:
+				send "{@prefix}&cUkendt celle-id." to player
+				stop
+
+			set {cell::%{_id}%::region} to {_region}
+			send "{@prefix}&aRegion sat: &f%{_id}%&a -> &f%{_region}%&a." to player
+			stop
+
+		send "{@prefix}&cBrug: /celladmin add|remove|list|setsign|setregion" to player
